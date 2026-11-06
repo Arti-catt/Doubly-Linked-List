@@ -4,8 +4,16 @@
 
 #include "colors.h"
 
-#define LIST_LEN   15
+#define LIST_DEBUG
+
+#define LIST_LEN   5
 #define POISON   -666
+
+#ifdef LIST_DEBUG
+    #define DEBUG_DUMP(list, data) Dump(list, data);
+#else
+    #define DEBUG_DUMP(...)
+#endif
 
 #define GONDON(condition)                                                    \
     if (!(condition)) {                                                      \
@@ -16,6 +24,7 @@
 #define ERR_TEXT(...)                                                                   \
     fprintf(stderr, "Function: %s, file: %s:%d\n", __FUNCTION__, __FILE__, __LINE__);   \
     fprintf(stderr, __VA_ARGS__);
+#define LIST_VERIFY GONDON(ListVerify(list, data) != FATAL_ERR)
 
 #define LIST_DATA list, &data
 
@@ -40,8 +49,10 @@ struct ListData {
 
 void ListInit(Elem *list, ListData *data);
 
-void Push(Elem *list, ListData *data, ssize_t index, int number);     // index of element before
-void Pop(Elem *list, ListData *data, ssize_t index);        // index of element for pop
+void Insert(Elem *list, ListData *data, ssize_t index, int number);     // index of element before
+void Erase(Elem *list, ListData *data, ssize_t index);                  // index of element for erase
+
+bool CorrectIndex(Elem *list, ListData *data, ssize_t index);
 
 void PrintList(Elem *list, ListData *data);
 int ListVerify(Elem *list, ListData *data);
@@ -54,7 +65,12 @@ int main()
     ListData data = {};
     ListInit(LIST_DATA);
 
-    Push(LIST_DATA, 0, 10);
+    Insert(LIST_DATA, 0, 10);
+    Insert(LIST_DATA, 1, 20);
+    Insert(LIST_DATA, 2, 30);
+    Insert(LIST_DATA, 3, 40);
+    Erase(LIST_DATA, 4);
+    Erase(LIST_DATA, 2);
 
     Dump(LIST_DATA);
     PrintList(LIST_DATA);
@@ -67,6 +83,7 @@ void ListInit (Elem *list, ListData *data)
     GONDON(data)
 
     for (ssize_t i = 1; i < LIST_LEN; i++) {
+        list[i].value = POISON;
         list[i].next = i + 1;
         list[i].prev = -1;
     }
@@ -80,57 +97,97 @@ void ListInit (Elem *list, ListData *data)
     data->head = 0;
 }
 
-void Push(Elem *list, ListData *data, ssize_t index, int number)
+void Insert(Elem *list, ListData *data, ssize_t index, int number)
 {
     GONDON(list)
     GONDON(data)
 
-    ListVerify(list, data);
+    LIST_VERIFY
 
+    if (!CorrectIndex(list, data, index))
+        return;
+    if (data->free == -1) {
+        ERR_TEXT("LIST IS %sFULL%s\n", RED, RES)
+        DEBUG_DUMP(list, data);
+        return;
+    }
+    ssize_t new_free = list[data->free].next;
+
+    if (index == data->head) {
+        data->head = data->free;
+    }
+    if (index == 0) {
+        data->tail = data->free;
+    }
+    list[data->free].value = number;
+    list[data->free].next = list[index].next;
+    list[index].next = data->free;
+
+    list[0].next = data->tail;
+    list[0].prev = data->head;
+    list[data->head].next = 0;
+    list[data->free].prev = index;
+
+    data->free = new_free;
+    data->size++;
+    LIST_VERIFY
+}
+
+void Erase(Elem *list, ListData *data, ssize_t index)
+{
+    GONDON(list)
+    GONDON(data)
+
+    LIST_VERIFY
+
+    if (!CorrectIndex(list, data, index))
+        return;
+    if (index == 0) {
+        ERR_TEXT("CAN'T %sERASE%s FICTION [0] ELEMENT\n", RED, RES)
+        DEBUG_DUMP(list, data);
+        return;
+    }
+
+    if (index == data->head) {
+        data->head = list[index].prev;
+    }
+    if (index == data->tail) {
+        data->tail = list[index].next;
+    }
+    list[list[index].prev].next = list[index].next;
+    list[list[index].next].prev = list[index].prev;
+    
+    list[index].value = POISON;
+    list[index].prev = -1;
+    list[data->head].next = 0;
+
+    list[data->last_free].next = index;
+    data->last_free = index;
+    list[data->last_free].next = -1;
+    if (data->free == -1)
+        data->free = data->last_free;
+
+    data->size--;
+    LIST_VERIFY
+}
+
+bool CorrectIndex(Elem *list, ListData *data, ssize_t index)
+{
+    GONDON(list)
+    GONDON(data)
+
+    bool answer = true;
     if (index < 0 && index >= LIST_LEN) {
         ERR_TEXT("INDEX <%zd> %sOUT OF RANGE%s\n", index, RED, RES)
-        return;
+        answer = false;
     }
     if (list[index].prev == -1) {
         ERR_TEXT("ELEMENT WITH INDEX <%zd> %sDOESN'T EXIST%s\n", index, RED, RES)
-        return;
+        answer = false;
     }
-    if (data->free == -1) {
-        ERR_TEXT("LIST IS %sFULL%s\n", RED, RES)
-        return;
-    }
-
-    ssize_t current_index = data->free;
-    data->free = list[data->free].next;
-
-    list[current_index].value = number;
-    if (data->size == 0) {
-        list[index].next = current_index;
-        data->tail = current_index;
-        data->head = current_index;
-        list[data->head].next = 0;
-        list[current_index].prev = 0;
-    }
-    else if (index == data->head) {
-        list[index].next = current_index;
-        data->head = current_index;
-        list[data->head].next = 0;
-        list[current_index].prev = index;
-    }
-    else if (index == 0) {
-        list[current_index].next = list[index].next;
-        list[index].next = current_index;
-        data->tail = current_index;
-        list[current_index].prev = index;
-    }
-    else {
-        list[current_index].next = list[index].next;
-        list[index].next = current_index;
-        list[current_index].prev = index;
-    }
-
-    data->size++;
-    int err = ListVerify(list, data);
+    if (!answer)
+        DEBUG_DUMP(list, data);
+    return answer;
 }
 
 void PrintList(Elem *list, ListData *data) // base for verificator
@@ -154,7 +211,7 @@ int ListVerify(Elem *list, ListData *data)
     int err = NON_ERR;
     ssize_t index = data->tail;
 
-    for(ssize_t i = 0; i < LIST_LEN; i++) {
+    for(ssize_t i = 0; i < data->size; i++) {
         if (index != 0) {
             index = list[index].next;
             continue;
@@ -162,6 +219,7 @@ int ListVerify(Elem *list, ListData *data)
         break;
     }
     if (index != 0) {
+        DEBUG_DUMP(list, data);
         ERR_TEXT("%sERROR%s OF VERIFICATION\n", RED, RES)
         err = FATAL_ERR;
     }
@@ -176,6 +234,7 @@ void Dump(Elem *list, ListData *data)
 
     printf("Struct List {\nTAIL = %zd;\nHEAD = %zd;\nFREE = %zd;\n}\n____LISTDUMP____\n\n",
             data->tail, data->head, data->free);
+
     printf("%sINDEX%s:\n", MASLO, RES);
     for (ssize_t i = 0; i < LIST_LEN; i++) {
         if (i == data->tail || i == data->head)
@@ -196,17 +255,20 @@ void Dump(Elem *list, ListData *data)
             end_ind[1] = 'T';
         printf("%s%6s%s\t", ORANGE_MASLO, end_ind, RES);
     }
-    printf("\n\n");
+    printf("\n");
+
     printf("%sVALUE%s:\n", BLUE_F, RES);
     for (ssize_t i = 0; i < LIST_LEN; i++) {
         printf("%s%6d%s\t", BLUE, list[i].value, RES);
     }
     printf("\n\n");
+
     printf("%sNEXT%s:\n", GREEN_F, RES);
     for (ssize_t i = 0; i < LIST_LEN; i++) {
         printf("%s%6zd%s\t", GREEN, list[i].next, RES);
     }
     printf("\n\n");
+
     printf("%sPREV%s:\n", RED_F, RES);
     for (ssize_t i = 0; i < LIST_LEN; i++) {
         printf("%s%6zd%s\t", RED, list[i].prev, RES);
