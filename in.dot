@@ -1,0 +1,7 @@
+digraph G {
+    rankdir = LR;
+    node [shape = Mrecord, color = red, style = filled, fillcolor = pink];
+    edge [color = darkred];
+
+    A [label = "{23} | {next | 12} | {prev | 0}", fillcolor = pink, penwidth = 1];
+}
