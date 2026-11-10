@@ -1,3 +1,1 @@
-g++ List.cpp -o list.out
-./list.out
-dot -Tpng graph.dot -o graph.png
+/usr/bin/dot -Tpng /home/solo/Documents/GitHub/Doubly-Linked-List/graph.dot -o /home/solo/Documents/GitHub/Doubly-Linked-List/DumpPictures/graph.png
