@@ -8,8 +8,8 @@ digraph G {
 	node2 [label = "{20} | {index | 2} | {next | 3} | {prev | 1}", fillcolor = pink];
 	node3 [label = "{30} | {index | 3} | {next | 0} | {prev | 2}", fillcolor = pink];
 
-	node0 -> node1;
-	node1 -> node2;
-	node2 -> node3;
+	node0-> node1;
+	node1-> node2;
+	node2-> node3;
 	node3:s -> node0:s;
 }

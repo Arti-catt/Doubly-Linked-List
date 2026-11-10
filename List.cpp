@@ -5,35 +5,43 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "colors.h"
+#include <sys/wait.h>
 
 #define LIST_DEBUG
 
-#define FOLDER_NAME "DumpPictures"
+#define FOLDER_NAME     "DumpPictures"
+#define DUMP_FILE       "dump.html"
 #define GRAPH_FILE_NAME "graph.dot"
 
-#define POISON   -666
+#define POISON -666
 
-const char *folder = "Pictures";
 const FILE *graph = fopen(GRAPH_FILE_NAME, "w");
-
-#ifdef LIST_DEBUG
-    #define DEBUG_DUMP(lipstik) Dump(lipstik);
-#else
-    #define DEBUG_DUMP(...)
-#endif
 
 #define GONDON(condition)                                                    \
     if (!(condition)) {                                                      \
-        fprintf(stderr, "File: %s:%d, Function: %s\nGONDON %sHELP%s YOU\n",  \
-            __FILE__, __LINE__, __FUNCTION__, RED, RES);                     \
+        fprintf(stderr, "Function: %s, file: %s:%d\nGONDON %sHELP%s YOU\n",  \
+            __FUNCTION__, __FILE__, __LINE__, RED, RES);                     \
+        DEBUG_DUMP(lipstik)                                                  \
         abort();                                                             \
     }
+
+#ifdef LIST_DEBUG
+    #define DEBUG_DUMP(lipstik) Dump(lipstik, __FUNCTION__, __FILE__, __LINE__);
+    FILE *dump_file = fopen(DUMP_FILE, "a");
+#else
+    #define DEBUG_DUMP(...)
+    const FILE *dump_file = NULL;
+#endif
+
 #define ERR_TEXT(...)                                                                   \
     fprintf(stderr, "Function: %s, file: %s:%d\n", __FUNCTION__, __FILE__, __LINE__);   \
     fprintf(stderr, __VA_ARGS__);
 #define LIST_VERIFY GONDON(ListVerify(lipstik) == NON_ERR)
 
 #define LIST lipstik->list
+
+#define LEN_COMMAND 100
+#define NUMBER_ERRORS 11
 
 enum Errors {
     NON_ERR          =   0,
@@ -45,12 +53,25 @@ enum Errors {
     INCORRECT_INDEX  =  32,
     NON_VALID_INDEX  =  64,
     LIST_IS_FULL     = 128,
+    FATAL_ERR        = 256,
+    SYSTEM_ERR       = 512,
 };
 
 enum Parametres {
     INSERT = 0,
     ERASE  = 1,
 };
+
+struct ErrMessages {
+    int number;
+    const char *message;
+};
+
+// struct Dumpik {
+//     ErrMessages *err_list;
+//     int numerator_of_pictures;
+//     char *command;
+// };
 
 struct Elem {
     int value;
@@ -75,14 +96,16 @@ void ListInit(ListData *lipstik, size_t capacity);
 void Insert(ListData *lipstik, ssize_t index, int number);     // index of element before
 void Erase(ListData *lipstik, ssize_t index);                  // index of element for erase
 
-int CorrectParametres(ListData *lipstik, ssize_t index);
+int CorrectParametres(ListData *lipstik, ssize_t index, int mode);
 
 void PrintList(ListData *lipstik);
 void ListDestroy(ListData *lipstik);
 int ListVerify(ListData *lipstik);
 
-void DumpPicture(ListData *lipstik);
-void Dump(ListData *lipstik);
+void DumpPicture(ListData *lipstik, int numerator_of_pictures);
+void Dump(ListData *lipstik, const char *function, const char *file, int line);
+void ErrorShredder(ListData *lipstik);
+ErrMessages *StructsErrCreator();
 
 void Old_Dump(ListData *lipstik);
 
@@ -134,7 +157,7 @@ void Insert(ListData *lipstik, ssize_t index, int number)
     LIST_VERIFY
     if (lipstik->err != NON_ERR)
         return;
-    if (CorrectParametres(lipstik, index) != NON_ERR)
+    if (CorrectParametres(lipstik, index, INSERT) != NON_ERR)
         return;
 
     ssize_t new_free = LIST[lipstik->free].next;
@@ -165,7 +188,7 @@ void Erase(ListData *lipstik, ssize_t index)
     LIST_VERIFY
     if (lipstik->err != NON_ERR)
         return;
-    if (CorrectParametres(lipstik, index) != NON_ERR)
+    if (CorrectParametres(lipstik, index, ERASE) != NON_ERR)
         return;
 
     if (index == lipstik->head)
@@ -191,19 +214,13 @@ int CorrectParametres(ListData *lipstik, ssize_t index, int mode)
 {
     GONDON(lipstik)
 
-    switch(mode) {
-        case INSERT:
-            if (lipstik->free == -1) {
-                // ERR_TEXT("LIST IS %sFULL%s\n", RED, RES)
-                lipstik->err += LIST_IS_FULL;
-            }
-            break;
-        case ERASE:
-            if (index == 0) {
-                // ERR_TEXT("CAN'T %sERASE%s FICTION [0] ELEMENT\n", RED, RES)
-                lipstik-> err += NON_VALID_INDEX;
-            }
-            break;
+    if (mode == INSERT && lipstik->free == -1) {
+        // ERR_TEXT("LIST IS %sFULL%s\n", RED, RES)
+        lipstik->err += LIST_IS_FULL;
+    }
+    if (mode == ERASE && index == 0) {
+        // ERR_TEXT("CAN'T %sERASE%s FICTION [0] ELEMENT\n", RED, RES)
+        lipstik-> err += NON_VALID_INDEX;
     }
     if (index < 0 && index >= lipstik->capacity) {
         // ERR_TEXT("INDEX <%zd> %sOUT OF RANGE%s\n", index, RED, RES)
@@ -215,7 +232,7 @@ int CorrectParametres(ListData *lipstik, ssize_t index, int mode)
     }
 
     if (lipstik->err != NON_ERR)
-        Dump(lipstik);
+        DEBUG_DUMP(lipstik)
     return lipstik->err;
 }
 
@@ -232,13 +249,14 @@ void PrintList(ListData *lipstik) // base for verificator
         index = LIST[index].next;
     }
     printf("\n");
-    // DumpPicture(lipstik);
 }
 
 void ListDestroy(ListData *lipstik) // Cleaner of the structure
 {
     GONDON(lipstik)
     LIST_VERIFY
+
+    DEBUG_DUMP(lipstik)
 
     free(lipstik->list);
     char *cleaner = (char *) lipstik;
@@ -271,30 +289,76 @@ int ListVerify(ListData *lipstik)
     if (LIST[0].value != POISON)
         lipstik->err += FICTION_ELEM_ERR;
 
-    Dump(lipstik);
+    DEBUG_DUMP(lipstik)
     return lipstik->err;
 }
 
-void Dump(ListData *lipstik)
+void Dump(ListData *lipstik, const char *function, const char *file, int line)
 {
     GONDON(lipstik)
-    // TODO: make deshifr for errorcodes
+    static int numerator_of_pictures = 0;
+    numerator_of_pictures++;
+
+    fprintf(dump_file,
+        "<h1>Dumping...</h1>\n"
+        "<p>\n"
+        "<span style=\"color: green; font-weight: bold;\">Function: %s, file: %s, line: %d</span>\n",
+        function, file, line
+    );
+    ErrorShredder(lipstik);
+    DumpPicture(lipstik, numerator_of_pictures);
+    fprintf(dump_file, "\n");
 }
 
-void DumpPicture(ListData *lipstik)
+void ErrorShredder(ListData *lipstik)
 {
     GONDON(lipstik)
 
-    static int open_check = mkdir(FOLDER_NAME, 0755);
+    ErrMessages *err_list = StructsErrCreator();
 
-    static FILE *graph_file = fopen(GRAPH_FILE_NAME, "w");
+    if (lipstik->err == NON_ERR) {
+        fprintf(dump_file, "%s\n", err_list[0].message);
+        return;
+    }
+    for (int i = 0; i < NUMBER_ERRORS; i++) {
+        if (lipstik->err & err_list[i].number)
+            fprintf(dump_file, "<span style=\"color: red;\">%s</span>\n", err_list[i].message);
+    }
+}
+
+ErrMessages *StructsErrCreator()
+{
+    static ErrMessages err_list[NUMBER_ERRORS] = {
+        {NON_ERR,           "Errcode = 0, non errors in program"                 },
+        {NON_CONNECT,       "Incorrect connection between elements"              },
+        {INCORRECT_ENDS,    "Incorrect ENDS of list (tail or head)"              },
+        {NEGATIVE_TAIL,     "Negative tail"                                      },
+        {NEGATIVE_HEAD,     "Negative head"                                      },
+        {FICTION_ELEM_ERR,  "Value of the fiction element is incorrect"          },
+        {INCORRECT_INDEX,   "Index as a parameter of the function is incorrect"  },
+        {NON_VALID_INDEX,   "Element with this index is incorrect for operation" },
+        {LIST_IS_FULL,      "Size of the list is critical"                       },
+        {FATAL_ERR,         "Exotic error like problem in switch"                },
+        {SYSTEM_ERR,        "Function system worked incorrect"                   },
+    };
+    return err_list;
+}
+
+void DumpPicture(ListData *lipstik, int numerator_of_pictures)
+{
+    GONDON(lipstik)
+
+    static int open_check = mkdir(FOLDER_NAME, 0777);
+
+    FILE *graph_file = fopen(GRAPH_FILE_NAME, "w");
     GONDON(graph_file)
 
     fprintf(graph_file,
-    "digraph G {\n"
-    "\trankdir = LR;\n"
-    "\tnode [shape = Mrecord, color = red, style = filled, fillcolor = pink];\n"
-    "\tedge [color = darkred];\n");
+        "digraph G {\n"
+        "\trankdir = LR;\n"
+        "\tnode [shape = Mrecord, color = red, style = filled, fillcolor = pink];\n"
+        "\tedge [color = darkred];\n"
+    );
     fprintf(graph_file, "\n");
 
     ssize_t index = 0;
@@ -304,18 +368,39 @@ void DumpPicture(ListData *lipstik)
         index = LIST[index].next;
     }
     fprintf(graph_file, "\n");
+
     index = 0;
     for (size_t i = 0; i < lipstik->size; i++) {
-        fprintf(graph_file, "\tnode%zu -> node%zu;\n", index, LIST[index].next);
+        fprintf(graph_file, "\tnode%zd-> node%zd;\n", index, LIST[index].next);
         index = LIST[index].next;
     }
     fprintf(graph_file, "\tnode%zd:s -> node%d:s;\n", LIST[0].prev, 0);
     fprintf(graph_file, "}");
 
-    mkdir(FOLDER_NAME, 0755);
-    int check = system("/usr/bin/dot -Tpng /home/solo/Documents/GitHub/Doubly-Linked-List/graph.dot");
-    printf("%d\n", check);  // TODO: system() need to work (maybe vinovati prava)
+    fclose(graph_file);
+
+    char command[LEN_COMMAND] = "/usr/bin/dot -Tpng graph.dot -o DumpPictures/";
+    char graph_name[LEN_COMMAND] = "graph";
+    char numer[LEN_COMMAND] = "";
+    snprintf(numer, sizeof(graph_name), "%d", numerator_of_pictures);
+    strncat(graph_name, numer, sizeof(numer) / sizeof(char));
+    strncat(graph_name, ".png", 4);
+    strncat(command, graph_name, sizeof(graph_name) / sizeof(char));
+
+    int status = system(command);
+    if (status != 0)
+        lipstik->err += SYSTEM_ERR;
+
+    fprintf(dump_file,
+        "\n"
+        "<span style=\"font-weight: bold;\">__GRAPHIC_DUMP__</span>"
+        "</p>"
+        "<img src=\"/home/solo/Documents/GitHub/Doubly-Linked-List/DumpPictures/%s\">\n",
+        graph_name
+    );
 }
+
+////////////////////////////////////////////////////////////////////////
 
 void Old_Dump(ListData *lipstik)
 {
