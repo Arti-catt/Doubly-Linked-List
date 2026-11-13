@@ -4,11 +4,23 @@ digraph G {
 	node [shape = Mrecord, color = darkred, style = filled, fillcolor = pink];
 	edge [color = "white", penwidth = 2];
 
-	node0 [label = "{[0]} | {index | 0} | {next | 2} | {prev | 3}", fillcolor = darkgrey];
-	node2 [label = "{20} | {index | 2} | {next | 3} | {prev | 0}"];
-	node3 [label = "{30} | {index | 3} | {next | 0} | {prev | 2}"];
+	node0 [label = "{[0]} | {index | 0} | {next | 3} | {prev | 3}", fillcolor = darkgrey];
+	node3 [label = "{HEAD} | {30} | {index | 3} | {next | 0} | {prev | 2}", fillcolor = crimson];
+	node4 [label = "{FREE} | {-666} | {index | 4} | {next | 5} | {prev | -1}", fillcolor = darkorange];
+	node5 [label = "{-666} | {index | 5} | {next | 6} | {prev | -1}", fillcolor = sienna];
+	node6 [label = "{-666} | {index | 6} | {next | 7} | {prev | -1}", fillcolor = sienna];
+	node7 [label = "{-666} | {index | 7} | {next | 8} | {prev | -1}", fillcolor = sienna];
+	node8 [label = "{-666} | {index | 8} | {next | 9} | {prev | -1}", fillcolor = sienna];
+	node9 [label = "{-666} | {index | 9} | {next | 10} | {prev | -1}", fillcolor = sienna];
+	node10 [label = "{-666} | {index | 10} | {next | -1} | {prev | -1}", fillcolor = sienna];
 
-	node0-> node2;
-	node2-> node3;
-	node3:s -> node0:s;
+	node0->node3 [color = "red", penwidth = 5];
+	node3:s->node0:s;
+	node3->node4 [style = invis];
+	node4->node5;
+	node5->node6;
+	node6->node7;
+	node7->node8;
+	node8->node9;
+	node9->node10;
 }
